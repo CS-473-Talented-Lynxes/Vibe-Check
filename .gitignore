@@ -1,3 +1,7 @@
+data/raw/311_Service_Requests_from_2020_to_Present_20260321.csv
+data/processed/
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
