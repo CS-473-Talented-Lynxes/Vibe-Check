@@ -29,9 +29,9 @@ df = pd.read_csv(INPUT_FILE, low_memory=False)
 
 print(f"Original shape: {df.shape}")
 
-# =========================
+
 # STANDARDIZE COLUMN NAMES
-# =========================
+
 df.columns = df.columns.str.strip()
 
 # Rename columns
@@ -42,9 +42,9 @@ column_map = {
 
 df = df.rename(columns=column_map)
 
-# =========================
+
 # FILTER COLUMNS
-# =========================
+
 KEEP_COLUMNS = [
     "Created Date",
     "Problem",
@@ -58,9 +58,9 @@ KEEP_COLUMNS = [
 existing_cols = [col for col in KEEP_COLUMNS if col in df.columns]
 df = df[existing_cols]
 
-# =========================
+
 # CLEAN DATA
-# =========================
+
 
 df = df.dropna(subset=["Problem", "Incident Zip", "Latitude", "Longitude"])
 
@@ -71,18 +71,18 @@ df["Incident Zip"] = df["Incident Zip"].astype(str).str.extract(r"(\d{5})")
 df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
 df = df.dropna(subset=["Created Date"])
 
-# =========================
+
 # FILTER DATE RANGE (Mar 2024 → Mar 2026)
-# =========================
+
 
 start_date = pd.to_datetime("2024-03-01")
 end_date = pd.to_datetime("2026-03-31")
 
 df = df[(df["Created Date"] >= start_date) & (df["Created Date"] <= end_date)]
 
-# =========================
+
 # RECENCY SCORE (IMPORTANT)
-# =========================
+
 
 # Use most recent date in dataset as reference
 latest_date = df["Created Date"].max()
@@ -92,9 +92,9 @@ lambda_decay = 0.01
 
 df["recency_weight"] = np.exp(-lambda_decay * (latest_date - df["Created Date"]).dt.days)
 
-# =========================
+
 # CATEGORY GROUPING
-# =========================
+
 
 # CATEGORY_MAP = {
 #     "Rodent": "rats",
@@ -113,9 +113,9 @@ df["recency_weight"] = np.exp(-lambda_decay * (latest_date - df["Created Date"])
 
 # df["Category"] = df["Problem"].apply(map_category)
 
-# # =========================
+# 
 # # AGGREGATION (WEIGHTED)
-# # =========================
+# 
 
 # agg_df = (
 #     df.groupby(["Incident Zip", "Category"])["recency_weight"]
@@ -128,9 +128,9 @@ df["recency_weight"] = np.exp(-lambda_decay * (latest_date - df["Created Date"])
 # # Normalize
 # pivot_df = pivot_df.div(pivot_df.sum(axis=1), axis=0)
 
-# =========================
+
 # SAVE OUTPUTS
-# =========================
+
 
 PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
