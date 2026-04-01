@@ -14,9 +14,12 @@ First, we process the 311 data to clean it down to 8 columns and within a strict
 Created Date,Problem,Problem Detail,Incident Zip,Borough,Latitude,Longitude,recency_weight
 ```
 The first 7 columns is directly outputed from the source dataset, the last column, recency_weight is calculated as follows:
+
 $$
 \text{recency\_weight} = e^{-\lambda \cdot \Delta t}\\
-$$$$
+$$
+
+$$
 \lambda = 0.01\\
 \Delta t = t_{\text{Current Date}} - t_{\text{Created Date}}
 $$
@@ -24,10 +27,12 @@ $$
 Second, we use a pre-trained sentence-transformer embedding model (all-MiniLM-L6-v2) and cosine similarity to map free-form user concerns from embedded Problem and Problem Detail (for example, Unsanitary condition - Pests) among the most relevant NYC 311 complaint categories; We believe semantic matching is more reliable than keyword matching. 
 
 Third, we run k-means clustering on the latitude/longitude points of matched complaints to identify concentrated issue areas and produce ranked neighborhood candidates with similarity scores, then we calculate severity scores for each clusters:
+
 $$
 \text{Severity} = \sum_{i=1}^{n} (\text{recency\_weight}_i \times \text{similarity}_i)\\
 \text{n} = \text{number of complaints in the category}
 $$
+
 Afterwards, the output can be further normalized, geographically analyzed and interpreted for decision-making. 
 
 Fourth, we output the result into json format to the front-end webapp. Together, these steps create a practical pipeline that turns subjective preferences into explainable, data-driven area recommendations.
