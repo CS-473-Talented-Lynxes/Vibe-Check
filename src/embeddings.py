@@ -51,7 +51,7 @@ class ComplaintSearcher:
             results.append({
                 'problem': self.categories[idx]['Problem'],
                 'detail': self.categories[idx]['Problem Detail'],
-                'similarity': similarities[idx]
+                'similarity': float(similarities[idx])
             })
             
         return results
