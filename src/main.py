@@ -48,7 +48,7 @@ def main():
             print(f"Rank {i+1}:")
             print(f"  Borough/Zip : {c['primary_borough']}, {c['primary_zip']}")
             print(f"  Coordinates : {c['center_lat']:.5f}, {c['center_lon']:.5f}")
-            print(f"  Severity    : {c['severity_score']:.2f} based on {c['complaint_count']} complaints")
+            print(f"  Severity    : {c['severity_score']:.2f} (sum of recency_weight * similarity across {c['complaint_count']} complaints)")
             print(f"  Map Link    : https://www.google.com/maps?q={c['center_lat']},{c['center_lon']}")
             print("-" * 40)
             

@@ -25,17 +25,33 @@ class LocationClusterer:
         """
         Filter dataset by matching problem categories and cluster locations.
         """
-        # Create a boolean mask to filter rows
-        mask = pd.Series(False, index=self.df.index)
-        for cat in matched_categories:
-            cat_mask = (self.df['Problem'] == cat['problem']) & (self.df['Problem Detail'] == cat['detail'])
-            mask = mask | cat_mask
-            
-        filtered_df = self.df[mask].copy()
+        if not matched_categories:
+            return []
+
+        matches_df = pd.DataFrame(matched_categories).copy()
+        if not {'problem', 'detail'}.issubset(matches_df.columns):
+            return []
+        if 'similarity' not in matches_df.columns:
+            matches_df['similarity'] = 1.0
+        matches_df = matches_df[['problem', 'detail', 'similarity']].copy()
+        matches_df = matches_df.rename(columns={
+            'problem': 'Problem',
+            'detail': 'Problem Detail'
+        })
+        matches_df['similarity'] = pd.to_numeric(matches_df['similarity'], errors='coerce').fillna(0.0)
+        matches_df = (
+            matches_df
+            .groupby(['Problem', 'Problem Detail'], as_index=False)['similarity']
+            .max()
+        )
+
+        filtered_df = self.df.merge(matches_df, on=['Problem', 'Problem Detail'], how='inner')
         
         if len(filtered_df) == 0:
             return []
-            
+
+        filtered_df['severity_contribution'] = filtered_df['recency_weight'] * filtered_df['similarity']
+             
         # Adjust K if we have very few points
         actual_k = min(k_clusters, len(filtered_df))
         
@@ -52,7 +68,7 @@ class LocationClusterer:
             
             centroid = kmeans.cluster_centers_[i]
             count = len(cluster_data)
-            total_weight = cluster_data['recency_weight'].sum()
+            total_weight = cluster_data['severity_contribution'].sum()
             
             # Get the most common zip code and borough for context
             most_common_zip = cluster_data['Incident Zip'].mode().iloc[0] if not cluster_data['Incident Zip'].mode().empty else "Unknown"
