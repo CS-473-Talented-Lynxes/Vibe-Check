@@ -1,6 +1,14 @@
+# Data Manipulation
 pandas
-scikit-learn
-sentence-transformers
 numpy
-pyarrow
-fastparquet
+
+# Machine Learning & Embeddings
+sentence-transformers
+scikit-learn # can't use directly, should use numpy and or torch for final implementation
+torch
+
+# Web Application (Required for Demo)
+streamlit
+
+# Utilities
+pathlib
