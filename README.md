@@ -16,11 +16,13 @@ Created Date,Problem,Problem Detail,Incident Zip,Borough,Latitude,Longitude,rece
 The first 7 columns is directly outputed from the source dataset, the last column, recency_weight is calculated as follows:
 
 $$
-\text{recency\_weight} = e^{-\lambda \cdot \Delta t}\\
+\text{recency weight} = e^{-\lambda \cdot \Delta t}\\
 $$
 
 $$
-\lambda = 0.01\\
+\lambda = 0.01
+$$
+$$
 \Delta t = t_{\text{Current Date}} - t_{\text{Created Date}}
 $$
 
@@ -29,7 +31,9 @@ Second, we use a pre-trained sentence-transformer embedding model (all-MiniLM-L6
 Third, we run k-means clustering on the latitude/longitude points of matched complaints to identify concentrated issue areas and produce ranked neighborhood candidates with similarity scores, then we calculate severity scores for each clusters:
 
 $$
-\text{Severity} = \sum_{i=1}^{n} (\text{recency\_weight}_i \times \text{similarity}_i)\\
+\text{Severity} = \sum_{i=1}^{n} (\text{recency weight}_i \times \text{similarity}_i)
+$$
+$$
 \text{n} = \text{number of complaints in the category}
 $$
 
