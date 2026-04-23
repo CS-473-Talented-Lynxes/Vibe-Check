@@ -4,13 +4,17 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
+try:
+    from src.data.dataset import load_prepared_311_data
+except ModuleNotFoundError:
+    from data.dataset import load_prepared_311_data
+
 # Constants
 MODEL_NAME = 'all-MiniLM-L6-v2'
-DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__abspath__)), 'data', 'processed', 'cleaned_raw_311.csv') if '__abspath__' in globals() else os.path.join(os.path.dirname(__file__), '..', 'data', 'processed', 'cleaned_raw_311.csv')
 
 class ComplaintSearcher:
     def __init__(self, data_path=None):
-        self.data_path = data_path if data_path else os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'processed', 'cleaned_raw_311.csv')
+        self.data_path = data_path
         self.model = SentenceTransformer(MODEL_NAME)
         self.categories = []
         self.category_texts = []
@@ -20,8 +24,7 @@ class ComplaintSearcher:
 
     def _load_and_embed(self):
         print("Loading 311 dataset...")
-        # We only need the problem categories to find unique ones
-        df = pd.read_csv(self.data_path, usecols=['Problem', 'Problem Detail'])
+        df = load_prepared_311_data(self.data_path)[['Problem', 'Problem Detail']]
         
         # Drop duplicates to find unique Problem + Detail combos
         unique_categories = df.drop_duplicates().dropna()
@@ -55,6 +58,9 @@ class ComplaintSearcher:
             })
             
         return results
+
+    def get_category_labels(self):
+        return [f"{row['Problem']} - {row['Problem Detail']}" for row in self.categories]
 
 if __name__ == "__main__":
     searcher = ComplaintSearcher()
