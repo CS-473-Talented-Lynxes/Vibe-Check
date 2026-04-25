@@ -124,7 +124,7 @@ class LocationClusterer:
         )
         return ranked_clusters
 
-    def cluster_extremes(self, matched_categories, k_clusters=300, top_n=5):
+    def cluster_extremes(self, matched_categories, k_clusters=300, top_n=50):
         ranked_clusters = self.cluster_locations(matched_categories, k_clusters=k_clusters)
         if not ranked_clusters:
             return {"worst": [], "best": []}
