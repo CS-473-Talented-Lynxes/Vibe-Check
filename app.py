@@ -28,8 +28,8 @@ def add_selection(label, payload, similarity_store):
     if label in current:
         similarity_store[label] = max(similarity_store.get(label, 0.0), payload["similarity"])
         return
-    if len(current) >= 5:
-        st.warning("You can select up to 5 concerns at a time.")
+    if len(current) >= 50:
+        st.warning("You can select up to 50 concerns at a time.")
         return
     current.append(label)
     similarity_store[label] = payload["similarity"]
@@ -105,7 +105,7 @@ def run_analysis(clusterer, matched_categories):
     cluster_results = clusterer.cluster_extremes(
         matched_categories,
         k_clusters=300,
-        top_n=5,
+        top_n=50,
     )
 
     return {
@@ -253,10 +253,10 @@ def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
     with selection_col:
         st.subheader("3. Build your concern list")
         selected_labels = st.multiselect(
-            "Choose up to five concerns",
+            "Choose up to 50 concerns",
             options=all_category_labels,
             default=st.session_state.selected_labels,
-            max_selections=5,
+            max_selections=50,
             placeholder="Pick categories for this run",
         )
         st.session_state.selected_labels = selected_labels

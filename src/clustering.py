@@ -1,15 +1,13 @@
-import os
+import numpy as np
 import pandas as pd
-from sklearn.cluster import KMeans
-import warnings
 
 try:
     from src.data.dataset import load_prepared_311_data
 except ModuleNotFoundError:
     from data.dataset import load_prepared_311_data
 
-# Suppress kmeans warning about memory leak
-warnings.filterwarnings("ignore", category=UserWarning, module='sklearn.cluster')
+RANDOM_SEED = 42
+BATCH_SIZE = 10_000
 
 class LocationClusterer:
     def __init__(self, data_path=None):
@@ -54,50 +52,71 @@ class LocationClusterer:
         filtered_df['severity_contribution'] = filtered_df['recency_weight'] * filtered_df['similarity']
         return filtered_df
 
+    def _select_seed_indices(self, coords, k_clusters):
+        unique_coords, unique_indices = np.unique(coords, axis=0, return_index=True)
+        actual_k = min(k_clusters, len(unique_coords))
+        if actual_k == 0:
+            return np.array([], dtype=int)
+
+        rng = np.random.default_rng(RANDOM_SEED)
+        chosen_positions = rng.choice(len(unique_indices), size=actual_k, replace=False)
+        return unique_indices[chosen_positions]
+
+    def _assign_to_closest_seed(self, coords, seed_coords):
+        assignments = np.empty(len(coords), dtype=int)
+
+        for start in range(0, len(coords), BATCH_SIZE):
+            stop = min(start + BATCH_SIZE, len(coords))
+            batch = coords[start:stop]
+            deltas = batch[:, None, :] - seed_coords[None, :, :]
+            distances = np.sum(deltas * deltas, axis=2)
+            assignments[start:stop] = np.argmin(distances, axis=1)
+
+        return assignments
+
     def cluster_locations(self, matched_categories, k_clusters=300):
         """
-        Filter dataset by matching problem categories and cluster locations.
+        Filter dataset by matching problem categories and assign each point
+        to its nearest seed point in a single pass without centroid updates.
         """
         filtered_df = self._matched_dataframe(matched_categories)
         
         if len(filtered_df) == 0:
             return []
-             
-        # Adjust K if we have very few points
-        actual_k = min(k_clusters, len(filtered_df))
+
+        coords = filtered_df[['Latitude', 'Longitude']].to_numpy(dtype=float)
+        seed_indices = self._select_seed_indices(coords, k_clusters)
+        if len(seed_indices) == 0:
+            return []
+
+        seed_coords = coords[seed_indices]
+        filtered_df = filtered_df.copy()
+        filtered_df['Cluster'] = self._assign_to_closest_seed(coords, seed_coords)
         
-        coords = filtered_df[['Latitude', 'Longitude']].values
-        
-        # Apply K-Means
-        kmeans = KMeans(n_clusters=actual_k, random_state=42, n_init='auto')
-        filtered_df['Cluster'] = kmeans.fit_predict(coords)
-        
-        # Aggregate cluster stats
         cluster_stats = []
-        for i in range(actual_k):
+        for i, seed_coord in enumerate(seed_coords):
             cluster_data = filtered_df[filtered_df['Cluster'] == i]
-            
-            centroid = kmeans.cluster_centers_[i]
             count = len(cluster_data)
+            if count == 0:
+                continue
+
             total_weight = cluster_data['severity_contribution'].sum()
             normalized_severity = total_weight / count if count else 0.0
-            
-            # Get the most common zip code and borough for context
+
             most_common_zip = cluster_data['Incident Zip'].mode().iloc[0] if not cluster_data['Incident Zip'].mode().empty else "Unknown"
             most_common_borough = cluster_data['Borough'].mode().iloc[0] if not cluster_data['Borough'].mode().empty else "Unknown"
-            
+
             cluster_stats.append({
                 'cluster_id': i,
-                'center_lat': float(centroid[0]),
-                'center_lon': float(centroid[1]),
+                'center_lat': float(seed_coord[0]),
+                'center_lon': float(seed_coord[1]),
                 'complaint_count': int(count),
                 'severity_score': float(total_weight),
                 'normalized_severity': float(normalized_severity),
                 'primary_zip': most_common_zip,
                 'primary_borough': most_common_borough
             })
-            
-        # Rank clusters by normalized severity so large clusters do not automatically dominate.
+
         ranked_clusters = sorted(
             cluster_stats,
             key=lambda x: (x['normalized_severity'], x['severity_score']),
