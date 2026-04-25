@@ -5,8 +5,8 @@ from clustering import LocationClusterer
 
 def main():
     parser = argparse.ArgumentParser(description="Find NYC locations matching your least favorite urban issues.")
-    parser.add_argument('--top_categories', type=int, default=5, help="Number of 311 problem categories to match")
-    parser.add_argument('--clusters', type=int, default=15, help="Number of location clusters to find")
+    parser.add_argument('--top_categories', type=int, default=50, help="Number of 311 problem categories to match")
+    parser.add_argument('--clusters', type=int, default=300, help="Number of location clusters to find")
     args = parser.parse_args()
 
     print("=== NYC Vibe Check - Reverse Search ===")

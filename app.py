@@ -104,7 +104,7 @@ def build_map(points_df, recommendations):
 def run_analysis(clusterer, matched_categories):
     cluster_results = clusterer.cluster_extremes(
         matched_categories,
-        k_clusters=12,
+        k_clusters=300,
         top_n=5,
     )
 
@@ -227,7 +227,7 @@ def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
         )
         if st.button("Find matching categories", use_container_width=True):
             if semantic_query.strip():
-                st.session_state.search_results = searcher.search(semantic_query.strip(), top_k=8)
+                st.session_state.search_results = searcher.search(semantic_query.strip(), top_k=50)
             else:
                 st.session_state.search_results = []
 

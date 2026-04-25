@@ -54,7 +54,7 @@ class LocationClusterer:
         filtered_df['severity_contribution'] = filtered_df['recency_weight'] * filtered_df['similarity']
         return filtered_df
 
-    def cluster_locations(self, matched_categories, k_clusters=15):
+    def cluster_locations(self, matched_categories, k_clusters=300):
         """
         Filter dataset by matching problem categories and cluster locations.
         """
@@ -105,7 +105,7 @@ class LocationClusterer:
         )
         return ranked_clusters
 
-    def cluster_extremes(self, matched_categories, k_clusters=15, top_n=5):
+    def cluster_extremes(self, matched_categories, k_clusters=300, top_n=5):
         ranked_clusters = self.cluster_locations(matched_categories, k_clusters=k_clusters)
         if not ranked_clusters:
             return {"worst": [], "best": []}
@@ -123,6 +123,6 @@ if __name__ == "__main__":
     # Dummy mock test data
     dummy_categories = [{"problem": "Noise - Residential", "detail": "Loud Music/Party"}]
     print("Testing clustering with dummy categories...")
-    results = clusterer.cluster_locations(dummy_categories, k_clusters=5)
+    results = clusterer.cluster_locations(dummy_categories, k_clusters=300)
     for res in results:
         print(f"Rank. {res['primary_borough']} Zip: {res['primary_zip']} - Score: {res['severity_score']:.2f} (Count: {res['complaint_count']})")

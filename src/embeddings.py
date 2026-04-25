@@ -21,7 +21,7 @@ class ComplaintSearcher:
         self.data_path = Path(data_path) if data_path else None
         self.embeddings_path = Path(embeddings_path) if embeddings_path else EMBEDDINGS_OUTPUT_FILE
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
-        self.model = self._load_model()
+        self.model = None
         self.categories = []
         self.category_texts = []
         self.embeddings = None
@@ -45,20 +45,27 @@ class ComplaintSearcher:
 
         if self._load_cached_embeddings():
             print(f"Loaded cached embeddings from {self.embeddings_path}.")
-            return
+            return self.embeddings_path
 
         print(f"Computing embeddings with {MODEL_NAME}...")
+        model = self._get_model()
         document_texts = [f"{DOCUMENT_PREFIX}{text}" for text in self.category_texts]
-        self.embeddings = self.model.encode(
+        self.embeddings = model.encode(
             document_texts,
             convert_to_numpy=True,
             normalize_embeddings=True,
         )
         self._save_cached_embeddings()
         print(f"Embeddings computed and saved to {self.embeddings_path}.")
+        return self.embeddings_path
 
     def _format_category_text(self, row):
         return f"{row['Problem']}: {row['Problem Detail']}"
+
+    def _get_model(self):
+        if self.model is None:
+            self.model = self._load_model()
+        return self.model
 
     def _load_model(self):
         cached_model_path = self._resolve_cached_model_path()
@@ -130,9 +137,9 @@ class ComplaintSearcher:
             embeddings=self.embeddings.astype(np.float32),
         )
 
-    def search(self, query: str, top_k: int = 5):
+    def search(self, query: str, top_k: int = 50):
         """Search for top K matching categories based on semantic similarity to query."""
-        query_embedding = self.model.encode(
+        query_embedding = self._get_model().encode(
             [f"{QUERY_PREFIX}{query}"],
             convert_to_numpy=True,
             normalize_embeddings=True,
@@ -159,6 +166,6 @@ if __name__ == "__main__":
     searcher = ComplaintSearcher()
     query = "noise and loud music"
     print(f"\nTesting query: '{query}'")
-    results = searcher.search(query, top_k=5)
+    results = searcher.search(query, top_k=50)
     for i, res in enumerate(results):
         print(f"{i+1}. {res['problem']} - {res['detail']} (Sim: {res['similarity']:.4f})")
