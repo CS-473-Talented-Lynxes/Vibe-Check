@@ -76,8 +76,9 @@ class LocationClusterer:
 
     def cluster_locations(self, matched_categories, k_clusters=300):
         """
-        Filter dataset by matching problem categories and assign each point
-        to its nearest seed point in a single pass without centroid updates.
+        Filter dataset by matching problem categories, assign each point to its
+        nearest seed point, then normalize concern severity by all 311 complaint
+        weight assigned to the same cluster.
         """
         filtered_df = self._matched_dataframe(matched_categories)
         
@@ -92,16 +93,23 @@ class LocationClusterer:
         seed_coords = coords[seed_indices]
         filtered_df = filtered_df.copy()
         filtered_df['Cluster'] = self._assign_to_closest_seed(coords, seed_coords)
+
+        baseline_df = self.df[['Latitude', 'Longitude', 'recency_weight']].copy()
+        baseline_coords = baseline_df[['Latitude', 'Longitude']].to_numpy(dtype=float)
+        baseline_df['Cluster'] = self._assign_to_closest_seed(baseline_coords, seed_coords)
         
         cluster_stats = []
         for i, seed_coord in enumerate(seed_coords):
             cluster_data = filtered_df[filtered_df['Cluster'] == i]
+            baseline_cluster_data = baseline_df[baseline_df['Cluster'] == i]
             count = len(cluster_data)
             if count == 0:
                 continue
 
-            total_weight = cluster_data['severity_contribution'].sum()
-            normalized_severity = total_weight / count if count else 0.0
+            concern_weight = cluster_data['severity_contribution'].sum()
+            baseline_weight = baseline_cluster_data['recency_weight'].sum()
+            baseline_count = len(baseline_cluster_data)
+            normalized_severity = concern_weight / baseline_weight if baseline_weight else 0.0
 
             most_common_zip = cluster_data['Incident Zip'].mode().iloc[0] if not cluster_data['Incident Zip'].mode().empty else "Unknown"
             most_common_borough = cluster_data['Borough'].mode().iloc[0] if not cluster_data['Borough'].mode().empty else "Unknown"
@@ -111,7 +119,9 @@ class LocationClusterer:
                 'center_lat': float(seed_coord[0]),
                 'center_lon': float(seed_coord[1]),
                 'complaint_count': int(count),
-                'severity_score': float(total_weight),
+                'baseline_complaint_count': int(baseline_count),
+                'baseline_score': float(baseline_weight),
+                'severity_score': float(concern_weight),
                 'normalized_severity': float(normalized_severity),
                 'primary_zip': most_common_zip,
                 'primary_borough': most_common_borough

@@ -85,9 +85,11 @@ def build_map(points_df, recommendations):
     tooltip = {
         "html": (
             "<b>{primary_borough}</b> {primary_zip}<br/>"
-            "Normalized severity: {normalized_severity}<br/>"
-            "Severity: {severity_score}<br/>"
-            "Matched complaints: {complaint_count}"
+            "Concern share: {normalized_severity}<br/>"
+            "Concern score: {severity_score}<br/>"
+            "Baseline score: {baseline_score}<br/>"
+            "Matched complaints: {complaint_count}<br/>"
+            "All complaints in cluster: {baseline_complaint_count}"
         ),
         "style": {"backgroundColor": "#111827", "color": "white"},
     }
@@ -139,10 +141,10 @@ def render_results_page():
         return
 
     st.caption(
-        "These map markers and ranked lists come from the KMeans clustering pipeline. Clusters are now ranked by normalized severity, which means total concern weight divided by matched complaint count."
+        "These map markers and ranked lists come from the seed-based geographic clustering pipeline. Clusters are ranked by concern share: matched concern weight divided by total weighted 311 complaint volume in the same cluster."
     )
 
-    map_col, list_col = st.columns([1.35, 1])
+    map_col, list_col = st.columns([1.15, 1])
 
     with map_col:
         st.subheader("City Map")
@@ -155,44 +157,54 @@ def render_results_page():
         )
         legend_cols = st.columns(2)
         with legend_cols[0]:
-            st.success("Green = lower normalized-severity clusters")
+            st.success("Green = lower concern-share clusters")
         with legend_cols[1]:
-            st.error("Red = strongest normalized-severity hotspots")
+            st.error("Red = strongest concern-share hotspots")
 
     with list_col:
-        if best_clusters:
-            st.subheader("Lower-Concern Clusters")
-            for idx, row in enumerate(best_clusters):
-                area_label = f"{row['primary_borough']} {row['primary_zip']}"
-                st.markdown(
-                    f"""
-                    **{idx + 1}. {area_label}**  
-                    Normalized severity: `{row['normalized_severity']:.4f}`  
-                    Severity: `{row['severity_score']:.2f}`  
-                    Matched complaints: `{int(row['complaint_count'])}`  
-                    Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
-                    """
-                )
-        else:
-            st.info("No lower-severity clusters were available.")
+        lower_col, higher_col = st.columns(2)
 
-        st.divider()
+        with lower_col:
+            st.subheader("Lower-Concern")
+            with st.container(height=560):
+                if best_clusters:
+                    for idx, row in enumerate(best_clusters):
+                        area_label = f"{row['primary_borough']} {row['primary_zip']}"
+                        st.markdown(
+                            f"""
+                            **{idx + 1}. {area_label}**  
+                            Concern share: `{row['normalized_severity']:.4f}`  
+                            Concern score: `{row['severity_score']:.2f}`  
+                            Baseline score: `{row['baseline_score']:.2f}`  
+                            Matched complaints: `{int(row['complaint_count'])}`  
+                            All complaints: `{int(row['baseline_complaint_count'])}`  
+                            Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
+                            """
+                        )
+                        st.divider()
+                else:
+                    st.info("No lower-severity clusters were available.")
 
-        if worst_clusters:
-            st.subheader("Strongest Concern Hotspots")
-            for idx, row in enumerate(worst_clusters):
-                area_label = f"{row['primary_borough']} {row['primary_zip']}"
-                st.markdown(
-                    f"""
-                    **{idx + 1}. {area_label}**  
-                    Normalized severity: `{row['normalized_severity']:.4f}`  
-                    Severity: `{row['severity_score']:.2f}`  
-                    Matched complaints: `{int(row['complaint_count'])}`  
-                    Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
-                    """
-                )
-        else:
-            st.info("No high-severity clusters were available for this selection.")
+        with higher_col:
+            st.subheader("Hotspots")
+            with st.container(height=560):
+                if worst_clusters:
+                    for idx, row in enumerate(worst_clusters):
+                        area_label = f"{row['primary_borough']} {row['primary_zip']}"
+                        st.markdown(
+                            f"""
+                            **{idx + 1}. {area_label}**  
+                            Concern share: `{row['normalized_severity']:.4f}`  
+                            Concern score: `{row['severity_score']:.2f}`  
+                            Baseline score: `{row['baseline_score']:.2f}`  
+                            Matched complaints: `{int(row['complaint_count'])}`  
+                            All complaints: `{int(row['baseline_complaint_count'])}`  
+                            Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
+                            """
+                        )
+                        st.divider()
+                else:
+                    st.info("No high-severity clusters were available for this selection.")
 
 
 def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
@@ -221,26 +233,40 @@ def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
 
     with control_col:
         st.subheader("1. Search by description")
-        semantic_query = st.text_input(
-            "Describe what you want to avoid",
-            placeholder="Examples: loud music at night, rats, broken heating, potholes",
-        )
-        if st.button("Find matching categories", use_container_width=True):
+        with st.form("semantic-search-form"):
+            semantic_query = st.text_input(
+                "Describe what you want to avoid",
+                placeholder="Examples: loud music at night, rats, broken heating, potholes",
+            )
+            submitted_search = st.form_submit_button(
+                "Find matching categories",
+                use_container_width=True,
+            )
+
+        if submitted_search:
             if semantic_query.strip():
                 st.session_state.search_results = searcher.search(semantic_query.strip(), top_k=50)
             else:
                 st.session_state.search_results = []
 
         if st.session_state.search_results:
-            st.caption("Semantic matches from your text")
-            suggestion_cols = st.columns(2)
-            for idx, result in enumerate(st.session_state.search_results):
-                label = category_label(result["problem"], result["detail"])
-                with suggestion_cols[idx % 2]:
-                    st.write(f"**{label}**")
-                    st.caption(f"Similarity: {result['similarity']:.2f}")
-                    if st.button(f"Add suggestion {idx + 1}", key=f"suggestion-{idx}", use_container_width=True):
-                        add_selection(label, result, st.session_state.similarity_store)
+            with st.expander(
+                f"Browse semantic matches ({len(st.session_state.search_results)})",
+                expanded=True,
+            ):
+                with st.container(height=360):
+                    suggestion_cols = st.columns(2)
+                    for idx, result in enumerate(st.session_state.search_results):
+                        label = category_label(result["problem"], result["detail"])
+                        with suggestion_cols[idx % 2]:
+                            st.write(f"**{label}**")
+                            st.caption(f"Similarity: {result['similarity']:.2f}")
+                            if st.button(
+                                f"Add suggestion {idx + 1}",
+                                key=f"suggestion-{idx}",
+                                use_container_width=True,
+                            ):
+                                add_selection(label, result, st.session_state.similarity_store)
 
         st.subheader("2. Or pick a common category")
         common_cols = st.columns(3)
@@ -335,4 +361,4 @@ else:
     render_home_page(searcher, clusterer, category_lookup, all_category_labels)
 
 st.divider()
-st.caption("Semantic search uses sentence-transformer matching over 311 problem categories. KMeans hotspots are ranked by normalized severity: total matched concern weight divided by matched complaint count.")
+st.caption("Semantic search uses sentence-transformer matching over 311 problem categories. Geographic clusters are ranked by concern share: total matched concern weight divided by total weighted 311 complaint volume in the same cluster.")
