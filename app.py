@@ -221,11 +221,14 @@ def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
 
     with control_col:
         st.subheader("1. Search by description")
-        semantic_query = st.text_input(
-            "Describe what you want to avoid",
-            placeholder="Examples: loud music at night, rats, broken heating, potholes",
-        )
-        if st.button("Find matching categories", use_container_width=True):
+        with st.form("semantic_search_form"):
+            semantic_query = st.text_input(
+                "Describe what you want to avoid",
+                placeholder="Examples: loud music at night, rats, broken heating, potholes",
+            )
+            submitted = st.form_submit_button("Find matching categories", use_container_width=True)
+
+        if submitted:
             if semantic_query.strip():
                 st.session_state.search_results = searcher.search(semantic_query.strip(), top_k=50)
             else:
