@@ -26,7 +26,7 @@ $$
 \Delta t = t_{\text{Current Date}} - t_{\text{Created Date}}
 $$
 
-Second, we use a pre-trained sentence-transformer embedding model (all-MiniLM-L6-v2) and cosine similarity to map free-form user concerns from embedded Problem and Problem Detail (for example, Unsanitary condition - Pests) among the most relevant NYC 311 complaint categories; We believe semantic matching is more reliable than keyword matching. 
+Second, we use the `nomic-ai/nomic-embed-text-v1.5` embedding model and cosine similarity to map free-form user concerns from embedded Problem and Problem Detail (for example, Unsanitary condition - Pests) among the most relevant NYC 311 complaint categories; We believe semantic matching is more reliable than keyword matching. 
 
 Third, we run k-means clustering on the latitude/longitude points of matched complaints to identify concentrated issue areas and produce ranked neighborhood candidates with similarity scores, then we calculate severity scores for each clusters:
 
