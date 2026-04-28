@@ -85,7 +85,7 @@ def build_map(points_df, recommendations):
     tooltip = {
         "html": (
             "<b>{primary_borough}</b> {primary_zip}<br/>"
-            "Concern share: {normalized_severity}<br/>"
+            "Normalized severity: {normalized_severity}<br/>"
             "Concern score: {severity_score}<br/>"
             "Baseline score: {baseline_score}<br/>"
             "Matched complaints: {complaint_count}<br/>"
@@ -173,7 +173,7 @@ def render_results_page():
                         st.markdown(
                             f"""
                             **{idx + 1}. {area_label}**  
-                            Concern share: `{row['normalized_severity']:.4f}`  
+                            Normalized severity: `{row['normalized_severity']:.4f}`  
                             Concern score: `{row['severity_score']:.2f}`  
                             Baseline score: `{row['baseline_score']:.2f}`  
                             Matched complaints: `{int(row['complaint_count'])}`  
@@ -194,7 +194,7 @@ def render_results_page():
                         st.markdown(
                             f"""
                             **{idx + 1}. {area_label}**  
-                            Concern share: `{row['normalized_severity']:.4f}`  
+                            Normalized severity: `{row['normalized_severity']:.4f}`  
                             Concern score: `{row['severity_score']:.2f}`  
                             Baseline score: `{row['baseline_score']:.2f}`  
                             Matched complaints: `{int(row['complaint_count'])}`  
