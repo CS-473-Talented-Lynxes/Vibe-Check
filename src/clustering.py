@@ -109,7 +109,10 @@ class LocationClusterer:
             concern_weight = cluster_data['severity_contribution'].sum()
             baseline_weight = baseline_cluster_data['recency_weight'].sum()
             baseline_count = len(baseline_cluster_data)
-            normalized_severity = concern_weight / baseline_weight if baseline_weight else 0.0
+
+            # normalized_severity = concern_weight / baseline_weight if baseline_weight else 0.0
+            complaint_share = concern_weight / baseline_weight if baseline_weight else 0.0
+            normalized_severity = complaint_share * np.log1p(count)
 
             most_common_zip = cluster_data['Incident Zip'].mode().iloc[0] if not cluster_data['Incident Zip'].mode().empty else "Unknown"
             most_common_borough = cluster_data['Borough'].mode().iloc[0] if not cluster_data['Borough'].mode().empty else "Unknown"
