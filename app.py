@@ -8,6 +8,11 @@ from src.clustering import LocationClusterer
 
 st.set_page_config(page_title="Vibe Check", layout="wide")
 
+CLUSTERING_METHOD_LABELS = {
+    "seed": "Seed-based nearest-center",
+    "kmeans": "K-means",
+}
+
 
 @st.cache_resource(show_spinner=False)
 def get_searcher():
@@ -21,6 +26,10 @@ def get_clusterer():
 
 def category_label(problem, detail):
     return f"{problem} - {detail}"
+
+
+def clustering_method_label(method):
+    return CLUSTERING_METHOD_LABELS.get(method, method)
 
 
 def add_selection(label, payload, similarity_store):
@@ -103,17 +112,19 @@ def build_map(points_df, recommendations):
     )
 
 
-def run_analysis(clusterer, matched_categories):
+def run_analysis(clusterer, matched_categories, clustering_method):
     cluster_results = clusterer.cluster_extremes(
         matched_categories,
         k_clusters=300,
         top_n=50,
+        method=clustering_method,
     )
 
     return {
         "matched_categories": matched_categories,
         "best_clusters": cluster_results["best"],
         "worst_clusters": cluster_results["worst"],
+        "clustering_method": clustering_method,
     }
 
 
@@ -135,13 +146,21 @@ def render_results_page():
     results = st.session_state.analysis_results
     best_clusters = results["best_clusters"]
     worst_clusters = results["worst_clusters"]
+    clustering_method = results.get("clustering_method", "seed")
 
     if not best_clusters and not worst_clusters:
         st.warning("No ranked areas were available for this selection.")
         return
 
+    method_summary = (
+        "the seed-based nearest-center pipeline"
+        if clustering_method == "seed"
+        else "the native K-means pipeline"
+    )
     st.caption(
-        "These map markers and ranked lists come from the seed-based geographic clustering pipeline. Clusters are ranked by concern share: matched concern weight divided by total weighted 311 complaint volume in the same cluster."
+        f"Clustering method: {clustering_method_label(clustering_method)}. "
+        f"These map markers and ranked lists come from {method_summary}. "
+        "Clusters are ranked by concern share: matched concern weight divided by total weighted 311 complaint volume in the same cluster."
     )
 
     map_col, list_col = st.columns([1.15, 1])
@@ -289,6 +308,17 @@ def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
 
         render_selected_concerns()
 
+        st.subheader("4. Choose clustering method")
+        st.selectbox(
+            "Clustering algorithm",
+            options=list(CLUSTERING_METHOD_LABELS.keys()),
+            format_func=clustering_method_label,
+            key="selected_clustering_method",
+        )
+        st.caption(
+            "Seed-based uses sampled complaint locations as fixed centers. K-means updates the centers iteratively until clusters stabilize."
+        )
+
         if st.button(
             "Run Vibe Check",
             disabled=not selected_labels,
@@ -301,7 +331,11 @@ def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
                 st.session_state.similarity_store,
             )
             with st.spinner("Ranking areas..."):
-                st.session_state.analysis_results = run_analysis(clusterer, matched_categories)
+                st.session_state.analysis_results = run_analysis(
+                    clusterer,
+                    matched_categories,
+                    st.session_state.selected_clustering_method,
+                )
             st.session_state.current_page = "Results"
             st.rerun()
 
@@ -326,6 +360,8 @@ if "analysis_results" not in st.session_state:
     st.session_state.analysis_results = None
 if "current_page" not in st.session_state:
     st.session_state.current_page = "Home"
+if "selected_clustering_method" not in st.session_state:
+    st.session_state.selected_clustering_method = "seed"
 
 category_lookup = {
     category_label(row["Problem"], row["Problem Detail"]): (row["Problem"], row["Problem Detail"])
@@ -361,4 +397,4 @@ else:
     render_home_page(searcher, clusterer, category_lookup, all_category_labels)
 
 st.divider()
-st.caption("Semantic search uses sentence-transformer matching over 311 problem categories. Geographic clusters are ranked by concern share: total matched concern weight divided by total weighted 311 complaint volume in the same cluster.")
+st.caption("Semantic search uses sentence-transformer matching over 311 problem categories. Geographic clusters can be ranked with either the seed-based nearest-center method or native K-means, using concern share against total weighted 311 complaint volume in each cluster.")

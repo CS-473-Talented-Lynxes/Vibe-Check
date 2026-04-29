@@ -5,12 +5,14 @@ import pandas as pd
 
 try:
     from src.config.config import CLEANED_RAW_OUTPUT_FILE, INPUT_FILE
+    from src.data.preprocess import ensure_cleaned_raw_output_file
 except ModuleNotFoundError:
     project_root = Path(__file__).resolve().parents[2]
     import sys
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from src.config.config import CLEANED_RAW_OUTPUT_FILE, INPUT_FILE
+    from src.data.preprocess import ensure_cleaned_raw_output_file
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -49,8 +51,8 @@ def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     prepared = prepared.dropna(subset=["Created Date", "Incident Zip", "Latitude", "Longitude"])
 
-    start_date = pd.to_datetime("2024-03-01")
-    end_date = pd.to_datetime("2026-03-31")
+    start_date = pd.to_datetime("2025-03-01")
+    end_date = pd.to_datetime("2026-06-30")
     prepared = prepared[(prepared["Created Date"] >= start_date) & (prepared["Created Date"] <= end_date)].copy()
 
     latest_date = prepared["Created Date"].max()
@@ -64,6 +66,10 @@ def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def resolve_default_data_path() -> Path:
     if CLEANED_RAW_OUTPUT_FILE.exists():
         return CLEANED_RAW_OUTPUT_FILE
+    try:
+        return ensure_cleaned_raw_output_file()
+    except FileNotFoundError:
+        pass
     if INPUT_FILE.exists():
         return INPUT_FILE
     matching_raw_files = sorted(

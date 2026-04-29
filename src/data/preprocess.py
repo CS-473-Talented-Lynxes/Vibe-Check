@@ -1,11 +1,11 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
 import sys
 
+import numpy as np
+import pandas as pd
+
 try:
     from src.config.config import (
-        AGGREGATED_OUTPUT_FILE,
         CLEANED_RAW_OUTPUT_FILE,
         INPUT_FILE,
         PROCESSED_DATA_DIR,
@@ -16,34 +16,16 @@ except ModuleNotFoundError:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from src.config.config import (
-        AGGREGATED_OUTPUT_FILE,
         CLEANED_RAW_OUTPUT_FILE,
         INPUT_FILE,
         PROCESSED_DATA_DIR,
     )
 
-# LOAD DATA
 
-df = pd.read_csv(INPUT_FILE, low_memory=False)
-
-
-print(f"Original shape: {df.shape}")
-
-
-# STANDARDIZE COLUMN NAMES
-
-df.columns = df.columns.str.strip()
-
-# Rename columns
-column_map = {
+COLUMN_MAP = {
     "Problem (formerly Complaint Type)": "Problem",
-    "Problem Detail (formerly Descriptor)": "Problem Detail"
+    "Problem Detail (formerly Descriptor)": "Problem Detail",
 }
-
-df = df.rename(columns=column_map)
-
-
-# FILTER COLUMNS
 
 KEEP_COLUMNS = [
     "Created Date",
@@ -52,91 +34,80 @@ KEEP_COLUMNS = [
     "Incident Zip",
     "Borough",
     "Latitude",
-    "Longitude"
+    "Longitude",
 ]
 
-existing_cols = [col for col in KEEP_COLUMNS if col in df.columns]
-df = df[existing_cols]
+RAW_INPUT_COLUMNS = set(KEEP_COLUMNS) | set(COLUMN_MAP.keys())
 
 
-# CLEAN DATA
+def preprocess_311_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    prepared = df.copy()
+
+    print(f"Original shape: {prepared.shape}")
+
+    prepared.columns = prepared.columns.str.strip()
+    prepared = prepared.rename(columns=COLUMN_MAP)
+
+    existing_cols = [col for col in KEEP_COLUMNS if col in prepared.columns]
+    prepared = prepared[existing_cols]
+
+    prepared = prepared.dropna(subset=["Problem", "Problem Detail", "Incident Zip", "Latitude", "Longitude"])
+    prepared["Incident Zip"] = prepared["Incident Zip"].astype(str).str.extract(r"(\d{5})")
+    prepared["Created Date"] = pd.to_datetime(prepared["Created Date"], errors="coerce")
+    prepared["Latitude"] = pd.to_numeric(prepared["Latitude"], errors="coerce")
+    prepared["Longitude"] = pd.to_numeric(prepared["Longitude"], errors="coerce")
+    prepared = prepared.dropna(subset=["Created Date", "Incident Zip", "Latitude", "Longitude"])
+
+    # FILTER DATE RANGE (Mar 2025 -> Jun 2026)
+    start_date = pd.to_datetime("2025-03-01")
+    end_date = pd.to_datetime("2026-06-30")
+    prepared = prepared[
+        (prepared["Created Date"] >= start_date) & (prepared["Created Date"] <= end_date)
+    ].copy()
+
+    latest_date = prepared["Created Date"].max()
+    lambda_decay = 0.01
+    prepared["recency_weight"] = np.exp(-lambda_decay * (latest_date - prepared["Created Date"]).dt.days)
+
+    print(f"Prepared shape: {prepared.shape}")
+    return prepared
 
 
-df = df.dropna(subset=["Problem", "Incident Zip", "Latitude", "Longitude"])
+def build_cleaned_raw_output(
+    input_file: Path = INPUT_FILE,
+    output_file: Path = CLEANED_RAW_OUTPUT_FILE,
+) -> Path:
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
 
-# Clean ZIP codes
-df["Incident Zip"] = df["Incident Zip"].astype(str).str.extract(r"(\d{5})")
+    df = pd.read_csv(
+        input_file,
+        low_memory=False,
+        usecols=lambda col: col.strip() in RAW_INPUT_COLUMNS,
+    )
+    cleaned_df = preprocess_311_dataframe(df)
 
-# Convert date
-df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
-df = df.dropna(subset=["Created Date"])
+    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    cleaned_df.to_csv(output_file, index=False)
 
-
-# FILTER DATE RANGE (Mar 2024 → Mar 2026)
-
-
-start_date = pd.to_datetime("2024-03-01")
-end_date = pd.to_datetime("2026-03-31")
-
-df = df[(df["Created Date"] >= start_date) & (df["Created Date"] <= end_date)]
-
-
-# RECENCY SCORE (IMPORTANT)
-
-
-# Use most recent date in dataset as reference
-latest_date = df["Created Date"].max()
-
-# Exponential decay (you can tune lambda)
-lambda_decay = 0.01
-
-df["recency_weight"] = np.exp(-lambda_decay * (latest_date - df["Created Date"]).dt.days)
+    print("Cleaning complete!")
+    print(f"Cleaned raw file saved to: {output_file}")
+    return output_file
 
 
-# CATEGORY GROUPING
+def ensure_cleaned_raw_output_file(
+    input_file: Path = INPUT_FILE,
+    output_file: Path = CLEANED_RAW_OUTPUT_FILE,
+) -> Path:
+    if output_file.exists():
+        return output_file
+
+    return build_cleaned_raw_output(input_file=input_file, output_file=output_file)
 
 
-# CATEGORY_MAP = {
-#     "Rodent": "rats",
-#     "Noise": "noise",
-#     "Street Condition": "potholes",
-#     "Dirty": "cleanliness",
-#     "Sanitation": "cleanliness", #more to be added
-# }
-
-# def map_category(x):
-#     for key in CATEGORY_MAP:
-#         if key.lower() in str(x).lower():
-#             return CATEGORY_MAP[key]
-#     return "other"
+def main() -> None:
+    build_cleaned_raw_output()
 
 
-# df["Category"] = df["Problem"].apply(map_category)
-
-# 
-# # AGGREGATION (WEIGHTED)
-# 
-
-# agg_df = (
-#     df.groupby(["Incident Zip", "Category"])["recency_weight"]
-#     .sum()
-#     .reset_index(name="weighted_count")
-# )
-
-# pivot_df = agg_df.pivot(index="Incident Zip", columns="Category", values="weighted_count").fillna(0)
-
-# # Normalize
-# pivot_df = pivot_df.div(pivot_df.sum(axis=1), axis=0)
-
-
-# SAVE OUTPUTS
-
-
-PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-df.to_csv(CLEANED_RAW_OUTPUT_FILE, index=False)
-# pivot_df.to_csv(AGGREGATED_OUTPUT_FILE)
-
-print("Cleaning complete!")
-print(f"Cleaned raw file saved to: {CLEANED_RAW_OUTPUT_FILE}")
-# print(f"Aggregated file saved to: {AGGREGATED_OUTPUT_FILE}")
+if __name__ == "__main__":
+    main()
