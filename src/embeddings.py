@@ -2,7 +2,6 @@ import numpy as np
 from pathlib import Path
 from huggingface_hub.constants import HF_HUB_CACHE
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 try:
     from src.config.config import EMBEDDINGS_OUTPUT_FILE
@@ -14,6 +13,20 @@ except ModuleNotFoundError:
 MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
 DOCUMENT_PREFIX = "search_document: "
 QUERY_PREFIX = "search_query: "
+
+
+def cosine_similarity(query_embeddings: np.ndarray, document_embeddings: np.ndarray) -> np.ndarray:
+    query_embeddings = np.asarray(query_embeddings, dtype=np.float32)
+    document_embeddings = np.asarray(document_embeddings, dtype=np.float32)
+
+    query_norms = np.linalg.norm(query_embeddings, axis=1, keepdims=True)
+    document_norms = np.linalg.norm(document_embeddings, axis=1, keepdims=True).T
+
+    safe_query_norms = np.clip(query_norms, a_min=1e-12, a_max=None)
+    safe_document_norms = np.clip(document_norms, a_min=1e-12, a_max=None)
+
+    dot_products = query_embeddings @ document_embeddings.T
+    return dot_products / (safe_query_norms * safe_document_norms)
 
 
 class ComplaintSearcher:
