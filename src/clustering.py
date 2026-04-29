@@ -8,6 +8,8 @@ except ModuleNotFoundError:
 
 RANDOM_SEED = 42
 BATCH_SIZE = 10_000
+MAX_KMEANS_ITERATIONS = 50
+KMEANS_TOLERANCE = 1e-5
 
 class LocationClusterer:
     def __init__(self, data_path=None):
@@ -52,33 +54,88 @@ class LocationClusterer:
         filtered_df['severity_contribution'] = filtered_df['recency_weight'] * filtered_df['similarity']
         return filtered_df
 
-    def _select_seed_indices(self, coords, k_clusters):
-        unique_coords, unique_indices = np.unique(coords, axis=0, return_index=True)
-        actual_k = min(k_clusters, len(unique_coords))
+    def _initialize_centroids(self, coords, k_clusters):
+        unique_coords = np.unique(coords, axis=0)
+        actual_k = min(max(int(k_clusters), 0), len(unique_coords))
         if actual_k == 0:
-            return np.array([], dtype=int)
+            return np.empty((0, coords.shape[1]), dtype=float)
 
         rng = np.random.default_rng(RANDOM_SEED)
-        chosen_positions = rng.choice(len(unique_indices), size=actual_k, replace=False)
-        return unique_indices[chosen_positions]
+        chosen_positions = rng.choice(len(unique_coords), size=actual_k, replace=False)
+        return unique_coords[chosen_positions].astype(float)
 
-    def _assign_to_closest_seed(self, coords, seed_coords):
+    def _assign_to_closest_centroid(self, coords, centroids):
         assignments = np.empty(len(coords), dtype=int)
 
         for start in range(0, len(coords), BATCH_SIZE):
             stop = min(start + BATCH_SIZE, len(coords))
             batch = coords[start:stop]
-            deltas = batch[:, None, :] - seed_coords[None, :, :]
+            deltas = batch[:, None, :] - centroids[None, :, :]
             distances = np.sum(deltas * deltas, axis=2)
             assignments[start:stop] = np.argmin(distances, axis=1)
 
         return assignments
 
+    def _recompute_centroids(self, coords, assignments, previous_centroids):
+        centroids = previous_centroids.copy()
+
+        for cluster_id in range(len(previous_centroids)):
+            cluster_points = coords[assignments == cluster_id]
+            if len(cluster_points) > 0:
+                centroids[cluster_id] = cluster_points.mean(axis=0)
+
+        return centroids
+
+    def _calculate_inertia(self, coords, centroids, assignments):
+        inertia = 0.0
+
+        for start in range(0, len(coords), BATCH_SIZE):
+            stop = min(start + BATCH_SIZE, len(coords))
+            batch = coords[start:stop]
+            batch_centroids = centroids[assignments[start:stop]]
+            deltas = batch - batch_centroids
+            inertia += float(np.sum(deltas * deltas))
+
+        return inertia
+
+    def _fit_kmeans(self, coords, k_clusters, max_iterations=MAX_KMEANS_ITERATIONS, tolerance=KMEANS_TOLERANCE):
+        centroids = self._initialize_centroids(coords, k_clusters)
+        if len(centroids) == 0:
+            return centroids, np.array([], dtype=int), {
+                'iterations': 0,
+                'converged': True,
+                'inertia': 0.0,
+            }
+
+        assignments = np.full(len(coords), -1, dtype=int)
+        converged = False
+        iterations = 0
+
+        for iteration in range(1, max_iterations + 1):
+            new_assignments = self._assign_to_closest_centroid(coords, centroids)
+            new_centroids = self._recompute_centroids(coords, new_assignments, centroids)
+            centroid_shift = np.sqrt(np.sum((new_centroids - centroids) ** 2, axis=1)).max()
+
+            assignments_changed = not np.array_equal(new_assignments, assignments)
+            centroids = new_centroids
+            assignments = new_assignments
+            iterations = iteration
+
+            if centroid_shift <= tolerance or not assignments_changed:
+                converged = True
+                break
+
+        return centroids, assignments, {
+            'iterations': iterations,
+            'converged': converged,
+            'inertia': self._calculate_inertia(coords, centroids, assignments),
+        }
+
     def cluster_locations(self, matched_categories, k_clusters=300):
         """
-        Filter dataset by matching problem categories, assign each point to its
-        nearest seed point, then normalize concern severity by all 311 complaint
-        weight assigned to the same cluster.
+        Filter dataset by matching problem categories, run k-means from scratch
+        on matched latitude/longitude points, then rank each cluster by a
+        normalized concern score.
         """
         filtered_df = self._matched_dataframe(matched_categories)
         
@@ -86,20 +143,19 @@ class LocationClusterer:
             return []
 
         coords = filtered_df[['Latitude', 'Longitude']].to_numpy(dtype=float)
-        seed_indices = self._select_seed_indices(coords, k_clusters)
-        if len(seed_indices) == 0:
+        centroids, assignments, kmeans_info = self._fit_kmeans(coords, k_clusters)
+        if len(centroids) == 0:
             return []
 
-        seed_coords = coords[seed_indices]
         filtered_df = filtered_df.copy()
-        filtered_df['Cluster'] = self._assign_to_closest_seed(coords, seed_coords)
+        filtered_df['Cluster'] = assignments
 
         baseline_df = self.df[['Latitude', 'Longitude', 'recency_weight']].copy()
         baseline_coords = baseline_df[['Latitude', 'Longitude']].to_numpy(dtype=float)
-        baseline_df['Cluster'] = self._assign_to_closest_seed(baseline_coords, seed_coords)
+        baseline_df['Cluster'] = self._assign_to_closest_centroid(baseline_coords, centroids)
         
         cluster_stats = []
-        for i, seed_coord in enumerate(seed_coords):
+        for i, centroid in enumerate(centroids):
             cluster_data = filtered_df[filtered_df['Cluster'] == i]
             baseline_cluster_data = baseline_df[baseline_df['Cluster'] == i]
             count = len(cluster_data)
@@ -110,24 +166,29 @@ class LocationClusterer:
             baseline_weight = baseline_cluster_data['recency_weight'].sum()
             baseline_count = len(baseline_cluster_data)
 
-            # normalized_severity = concern_weight / baseline_weight if baseline_weight else 0.0
-            complaint_share = concern_weight / baseline_weight if baseline_weight else 0.0
-            normalized_severity = complaint_share * np.log1p(count)
+            concern_share = concern_weight / baseline_weight if baseline_weight else 0.0
+            reliability_factor = np.log1p(count)
+            normalized_severity = concern_share * reliability_factor
 
             most_common_zip = cluster_data['Incident Zip'].mode().iloc[0] if not cluster_data['Incident Zip'].mode().empty else "Unknown"
             most_common_borough = cluster_data['Borough'].mode().iloc[0] if not cluster_data['Borough'].mode().empty else "Unknown"
 
             cluster_stats.append({
                 'cluster_id': i,
-                'center_lat': float(seed_coord[0]),
-                'center_lon': float(seed_coord[1]),
+                'center_lat': float(centroid[0]),
+                'center_lon': float(centroid[1]),
                 'complaint_count': int(count),
                 'baseline_complaint_count': int(baseline_count),
                 'baseline_score': float(baseline_weight),
                 'severity_score': float(concern_weight),
+                'concern_share': float(concern_share),
+                'reliability_factor': float(reliability_factor),
                 'normalized_severity': float(normalized_severity),
                 'primary_zip': most_common_zip,
-                'primary_borough': most_common_borough
+                'primary_borough': most_common_borough,
+                'kmeans_iterations': int(kmeans_info['iterations']),
+                'kmeans_converged': bool(kmeans_info['converged']),
+                'kmeans_inertia': float(kmeans_info['inertia']),
             })
 
         ranked_clusters = sorted(

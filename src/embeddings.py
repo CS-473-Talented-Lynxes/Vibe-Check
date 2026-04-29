@@ -2,7 +2,6 @@ import numpy as np
 from pathlib import Path
 from huggingface_hub.constants import HF_HUB_CACHE
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 try:
     from src.config.config import EMBEDDINGS_OUTPUT_FILE
@@ -137,6 +136,12 @@ class ComplaintSearcher:
             embeddings=self.embeddings.astype(np.float32),
         )
 
+    def _cosine_similarities(self, query_embedding):
+        query_norm = np.linalg.norm(query_embedding, axis=1, keepdims=True)
+        embedding_norms = np.linalg.norm(self.embeddings, axis=1, keepdims=True).T
+        denominator = np.maximum(query_norm * embedding_norms, 1e-12)
+        return ((query_embedding @ self.embeddings.T) / denominator)[0]
+
     def search(self, query: str, top_k: int = 50):
         """Search for top K matching categories based on semantic similarity to query."""
         query_embedding = self._get_model().encode(
@@ -145,7 +150,7 @@ class ComplaintSearcher:
             normalize_embeddings=True,
         )
 
-        similarities = cosine_similarity(query_embedding, self.embeddings)[0]
+        similarities = self._cosine_similarities(query_embedding)
 
         top_k_indices = np.argsort(similarities)[::-1][:top_k]
 

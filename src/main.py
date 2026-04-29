@@ -36,7 +36,7 @@ def main():
         for i, m in enumerate(matches):
             print(f"  {i+1}. {m['problem']} - {m['detail']} (Similarity: {m['similarity']:.2f})")
             
-        print("\nGathering geographical data and finding K-Means clusters...")
+        print("\nGathering geographical data and finding from-scratch K-Means clusters...")
         clusters = clusterer.cluster_locations(matches, k_clusters=args.clusters)
         
         if not clusters:
