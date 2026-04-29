@@ -12,6 +12,8 @@ CLUSTERING_METHOD_LABELS = {
     "seed": "Seed-based nearest-center",
     "kmeans": "K-means",
 }
+MAP_COLUMN_RADIUS = 300
+MAP_ELEVATION_SCALE = 5000
 
 
 @st.cache_resource(show_spinner=False)
@@ -57,35 +59,53 @@ def build_match_payload(selected_labels, category_lookup, similarity_store):
 
 
 def build_map(points_df, recommendations):
-    base_view = pdk.ViewState(latitude=40.7128, longitude=-74.0060, zoom=10, pitch=35)
+    base_view = pdk.ViewState(latitude=40.7128, longitude=-74.0060, zoom=10, pitch=50)
     layers = []
 
     best_clusters = recommendations.get("best", [])
     worst_clusters = recommendations.get("worst", [])
 
+    def with_severity_height(clusters):
+        elevated_clusters = []
+        for cluster in clusters:
+            normalized_severity = float(cluster.get("normalized_severity", 0.0))
+            elevated_clusters.append({
+                **cluster,
+                "display_elevation": normalized_severity,
+            })
+        return elevated_clusters
+
     if best_clusters:
+        best_clusters = with_severity_height(best_clusters)
         layers.append(
             pdk.Layer(
-                "ScatterplotLayer",
+                "ColumnLayer",
                 data=best_clusters,
                 get_position="[center_lon, center_lat]",
-                get_radius=900,
+                radius=MAP_COLUMN_RADIUS,
+                get_elevation="display_elevation",
                 get_fill_color="[44, 160, 44, 180]",
                 get_line_color="[0, 80, 0, 220]",
+                elevation_scale=MAP_ELEVATION_SCALE,
+                extruded=True,
                 line_width_min_pixels=2,
                 pickable=True,
             )
         )
 
     if worst_clusters:
+        worst_clusters = with_severity_height(worst_clusters)
         layers.append(
             pdk.Layer(
-                "ScatterplotLayer",
+                "ColumnLayer",
                 data=worst_clusters,
                 get_position="[center_lon, center_lat]",
-                get_radius=900,
+                radius=MAP_COLUMN_RADIUS,
+                get_elevation="display_elevation",
                 get_fill_color="[220, 38, 38, 180]",
                 get_line_color="[127, 29, 29, 220]",
+                elevation_scale=MAP_ELEVATION_SCALE,
+                extruded=True,
                 line_width_min_pixels=2,
                 pickable=True,
             )
@@ -163,67 +183,67 @@ def render_results_page():
         "Clusters are ranked by concern share: matched concern weight divided by total weighted 311 complaint volume in the same cluster."
     )
 
-    map_col, list_col = st.columns([1.15, 1])
+    lower_col, higher_col = st.columns(2)
 
-    with map_col:
-        st.subheader("City Map")
+    with lower_col:
+        st.subheader("Lower-Concern")
+        with st.container(height=560):
+            if best_clusters:
+                for idx, row in enumerate(best_clusters):
+                    area_label = f"{row['primary_borough']} {row['primary_zip']}"
+                    st.markdown(
+                        f"""
+                        **{idx + 1}. {area_label}**  
+                        Normalized severity: `{row['normalized_severity']:.4f}`  
+                        Concern score: `{row['severity_score']:.2f}`  
+                        Baseline score: `{row['baseline_score']:.2f}`  
+                        Matched complaints: `{int(row['complaint_count'])}`  
+                        All complaints: `{int(row['baseline_complaint_count'])}`  
+                        Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
+                        """
+                    )
+                    st.divider()
+            else:
+                st.info("No lower-severity clusters were available.")
+
+        st.caption("Green markers show lower concern-share clusters.")
         st.pydeck_chart(
             build_map(
                 pd.DataFrame(),
-                {"best": best_clusters, "worst": worst_clusters},
+                {"best": best_clusters, "worst": []},
             ),
             use_container_width=True,
         )
-        legend_cols = st.columns(2)
-        with legend_cols[0]:
-            st.success("Green = lower concern-share clusters")
-        with legend_cols[1]:
-            st.error("Red = strongest concern-share hotspots")
 
-    with list_col:
-        lower_col, higher_col = st.columns(2)
+    with higher_col:
+        st.subheader("Hotspots")
+        with st.container(height=560):
+            if worst_clusters:
+                for idx, row in enumerate(worst_clusters):
+                    area_label = f"{row['primary_borough']} {row['primary_zip']}"
+                    st.markdown(
+                        f"""
+                        **{idx + 1}. {area_label}**  
+                        Normalized severity: `{row['normalized_severity']:.4f}`  
+                        Concern score: `{row['severity_score']:.2f}`  
+                        Baseline score: `{row['baseline_score']:.2f}`  
+                        Matched complaints: `{int(row['complaint_count'])}`  
+                        All complaints: `{int(row['baseline_complaint_count'])}`  
+                        Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
+                        """
+                    )
+                    st.divider()
+            else:
+                st.info("No high-severity clusters were available for this selection.")
 
-        with lower_col:
-            st.subheader("Lower-Concern")
-            with st.container(height=560):
-                if best_clusters:
-                    for idx, row in enumerate(best_clusters):
-                        area_label = f"{row['primary_borough']} {row['primary_zip']}"
-                        st.markdown(
-                            f"""
-                            **{idx + 1}. {area_label}**  
-                            Normalized severity: `{row['normalized_severity']:.4f}`  
-                            Concern score: `{row['severity_score']:.2f}`  
-                            Baseline score: `{row['baseline_score']:.2f}`  
-                            Matched complaints: `{int(row['complaint_count'])}`  
-                            All complaints: `{int(row['baseline_complaint_count'])}`  
-                            Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
-                            """
-                        )
-                        st.divider()
-                else:
-                    st.info("No lower-severity clusters were available.")
-
-        with higher_col:
-            st.subheader("Hotspots")
-            with st.container(height=560):
-                if worst_clusters:
-                    for idx, row in enumerate(worst_clusters):
-                        area_label = f"{row['primary_borough']} {row['primary_zip']}"
-                        st.markdown(
-                            f"""
-                            **{idx + 1}. {area_label}**  
-                            Normalized severity: `{row['normalized_severity']:.4f}`  
-                            Concern score: `{row['severity_score']:.2f}`  
-                            Baseline score: `{row['baseline_score']:.2f}`  
-                            Matched complaints: `{int(row['complaint_count'])}`  
-                            All complaints: `{int(row['baseline_complaint_count'])}`  
-                            Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
-                            """
-                        )
-                        st.divider()
-                else:
-                    st.info("No high-severity clusters were available for this selection.")
+        st.caption("Red markers show strongest concern-share hotspots.")
+        st.pydeck_chart(
+            build_map(
+                pd.DataFrame(),
+                {"best": [], "worst": worst_clusters},
+            ),
+            use_container_width=True,
+        )
 
 
 def render_home_page(searcher, clusterer, category_lookup, all_category_labels):
