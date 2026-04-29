@@ -36,7 +36,7 @@ The app's data loader looks for data in this order:
 2. A full raw CSV under `data/raw/`.
 3. The sample file at `data/raw/311_example_2.csv`.
 
-The preprocessing script reads from `data/raw/` and prefers the full dataset when it is available. It also supports the older `311_Service_Requests_from_2020_to_Present_*.csv` naming pattern for compatibility.
+The preprocessing script reads from `data/raw/` and prefers the full dataset when it is available. It also supports the original `311_Service_Requests_from_2020_to_Present_*.csv` naming pattern of NYC Open Data for compatibility.
 
 The preprocessing pipeline keeps the columns needed for the recommendation workflow:
 
