@@ -7,9 +7,11 @@ try:
     from src.config.config import (
         AGGREGATED_OUTPUT_FILE,
         CLEANED_RAW_OUTPUT_FILE,
-        INPUT_FILE,
+        DATA_END_DATE,
+        DATA_START_DATE,
         PROCESSED_DATA_DIR,
     )
+    from src.data.dataset import resolve_raw_data_path
 except ModuleNotFoundError:
     # Support direct execution: `python src/data/preprocess.py`
     project_root = Path(__file__).resolve().parents[2]
@@ -18,13 +20,17 @@ except ModuleNotFoundError:
     from src.config.config import (
         AGGREGATED_OUTPUT_FILE,
         CLEANED_RAW_OUTPUT_FILE,
-        INPUT_FILE,
+        DATA_END_DATE,
+        DATA_START_DATE,
         PROCESSED_DATA_DIR,
     )
+    from src.data.dataset import resolve_raw_data_path
 
 # LOAD DATA
 
-df = pd.read_csv(INPUT_FILE, low_memory=False)
+input_file = resolve_raw_data_path()
+print(f"Loading raw data from: {input_file}")
+df = pd.read_csv(input_file, low_memory=False)
 
 
 print(f"Original shape: {df.shape}")
@@ -72,11 +78,11 @@ df["Created Date"] = pd.to_datetime(df["Created Date"], errors="coerce")
 df = df.dropna(subset=["Created Date"])
 
 
-# FILTER DATE RANGE (Mar 2024 → Mar 2026)
+# FILTER DATE RANGE
 
 
-start_date = pd.to_datetime("2024-03-01")
-end_date = pd.to_datetime("2026-03-31")
+start_date = pd.to_datetime(DATA_START_DATE)
+end_date = pd.to_datetime(DATA_END_DATE)
 
 df = df[(df["Created Date"] >= start_date) & (df["Created Date"] <= end_date)]
 
