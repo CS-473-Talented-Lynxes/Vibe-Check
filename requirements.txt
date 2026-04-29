@@ -6,6 +6,7 @@ numpy
 sentence-transformers
 torch
 huggingface-hub
+einops
 
 # Web Application (Required for Demo)
 streamlit

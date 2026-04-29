@@ -50,20 +50,31 @@ normalized_severity = concern_share * reliability_factor
 
 ## Setup
 
+Clone the repository and create a virtual environment.
+
 ```bash
 git clone https://github.com/CS-473-Talented-Lynxes/Vibe-Check.git
 cd Vibe-Check
-python -m venv venv
 ```
-
-Activate the environment:
 
 ```bash
 # macOS/Linux
+python3 -m venv venv
 source venv/bin/activate
 
 # Windows PowerShell
+py -m venv venv
 .\venv\Scripts\Activate.ps1
+
+# Windows Command Prompt
+py -m venv venv
+.\venv\Scripts\activate.bat
+```
+
+If PowerShell blocks script activation, run this once in the current shell:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
 Install dependencies:
@@ -71,6 +82,14 @@ Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+If you are on an Intel-based Mac and the default PyTorch install fails, use the Intel-specific dependency set instead:
+
+```bash
+pip install -r requirements-mac-intel.txt
+```
+
+This file pins `torch==2.2.2`, `transformers<4.40.0`, and `numpy<2` for older Intel Mac compatibility.
 
 Run the Streamlit app:
 
@@ -81,5 +100,5 @@ streamlit run app.py
 Run the command-line demo:
 
 ```bash
-python .\src\main.py
+python src/main.py
 ```
