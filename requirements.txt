@@ -4,11 +4,9 @@ numpy
 
 # Machine Learning & Embeddings
 sentence-transformers
-scikit-learn # can't use directly, should use numpy and or torch for final implementation
 torch
+huggingface-hub
 
 # Web Application (Required for Demo)
 streamlit
-
-# Utilities
-pathlib
+pydeck
