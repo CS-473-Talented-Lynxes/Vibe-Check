@@ -4,13 +4,25 @@ import numpy as np
 import pandas as pd
 
 try:
-    from src.config.config import CLEANED_RAW_OUTPUT_FILE, INPUT_FILE
+    from src.config.config import (
+        CLEANED_RAW_OUTPUT_FILE,
+        DATA_END_DATE,
+        DATA_START_DATE,
+        INPUT_FILE,
+        RAW_DATA_FILE_PATTERNS,
+    )
 except ModuleNotFoundError:
     project_root = Path(__file__).resolve().parents[2]
     import sys
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
-    from src.config.config import CLEANED_RAW_OUTPUT_FILE, INPUT_FILE
+    from src.config.config import (
+        CLEANED_RAW_OUTPUT_FILE,
+        DATA_END_DATE,
+        DATA_START_DATE,
+        INPUT_FILE,
+        RAW_DATA_FILE_PATTERNS,
+    )
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -49,8 +61,8 @@ def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
     prepared = prepared.dropna(subset=["Created Date", "Incident Zip", "Latitude", "Longitude"])
 
-    start_date = pd.to_datetime("2024-03-01")
-    end_date = pd.to_datetime("2026-03-31")
+    start_date = pd.to_datetime(DATA_START_DATE)
+    end_date = pd.to_datetime(DATA_END_DATE)
     prepared = prepared[(prepared["Created Date"] >= start_date) & (prepared["Created Date"] <= end_date)].copy()
 
     latest_date = prepared["Created Date"].max()
@@ -61,23 +73,37 @@ def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return prepared.reset_index(drop=True)
 
 
-def resolve_default_data_path() -> Path:
-    if CLEANED_RAW_OUTPUT_FILE.exists():
-        return CLEANED_RAW_OUTPUT_FILE
+def resolve_raw_data_path() -> Path:
     if INPUT_FILE.exists():
         return INPUT_FILE
-    matching_raw_files = sorted(
-        RAW_DATA_DIR.glob("311_Service_Requests_from_2020_to_Present_*.csv"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
+
+    matching_raw_files = []
+    seen_paths = set()
+    for pattern in RAW_DATA_FILE_PATTERNS:
+        for path in RAW_DATA_DIR.glob(pattern):
+            if path not in seen_paths:
+                matching_raw_files.append(path)
+                seen_paths.add(path)
+    matching_raw_files = sorted(matching_raw_files, key=lambda path: path.stat().st_mtime, reverse=True)
+
     if matching_raw_files:
         return matching_raw_files[0]
     if SAMPLE_RAW_FILE.exists():
         return SAMPLE_RAW_FILE
     raise FileNotFoundError(
-        "No compatible 311 dataset was found. Expected a processed file, configured raw file, or sample raw file."
+        "No compatible raw 311 dataset was found. Download the full dataset into data/raw/ or keep the sample file."
     )
+
+
+def resolve_default_data_path() -> Path:
+    if CLEANED_RAW_OUTPUT_FILE.exists():
+        return CLEANED_RAW_OUTPUT_FILE
+    try:
+        return resolve_raw_data_path()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            "No compatible 311 dataset was found. Expected a processed file, raw file, or sample raw file."
+        ) from exc
 
 
 def load_prepared_311_data(data_path=None) -> pd.DataFrame:

@@ -30,6 +30,13 @@ CLUSTERING_METHOD_LABELS = {
 }
 MAP_COLUMN_RADIUS = 300
 MAP_ELEVATION_SCALE = 5000
+BOROUGH_ZILLOW_SLUGS = {
+    "manhattan": "manhattan",
+    "bronx": "bronx",
+    "brooklyn": "brooklyn",
+    "queens": "queens",
+    "staten island": "staten-island",
+}
 
 
 @st.cache_resource(show_spinner=False)
@@ -50,6 +57,22 @@ def clustering_method_label(method):
     return CLUSTERING_METHOD_LABELS.get(method, method)
 
 
+def zillow_area_url(borough, zip_code):
+    zip_text = "".join(ch for ch in str(zip_code) if ch.isdigit())[:5]
+    if not zip_text:
+        return "https://www.zillow.com/homes/"
+
+    borough_slug = BOROUGH_ZILLOW_SLUGS.get(str(borough).strip().lower())
+    if borough_slug:
+        return f"https://www.zillow.com/{borough_slug}-new-york-ny-{zip_text}/"
+
+    return f"https://www.zillow.com/homes/{zip_text}_rb/"
+
+
+def set_highlighted_cluster(cluster_id):
+    st.session_state.highlighted_cluster_id = int(cluster_id)
+
+
 def reset_current_analysis():
     st.session_state.selected_labels = []
     st.session_state.similarity_store = {}
@@ -58,6 +81,7 @@ def reset_current_analysis():
     st.session_state.current_page = "Home"
     st.session_state.semantic_query = ""
     st.session_state.selected_clustering_method = "seed"
+    st.session_state.highlighted_cluster_id = None
 
 
 def add_selection(label, payload, similarity_store):
@@ -86,12 +110,39 @@ def build_match_payload(selected_labels, category_lookup, similarity_store):
     return payload
 
 
-def build_map(points_df, recommendations):
-    base_view = pdk.ViewState(latitude=40.7128, longitude=-74.0060, zoom=10, pitch=50)
+def add_map_rank_metadata(clusters, result_type):
+    return [
+        {
+            **cluster,
+            "list_rank": idx + 1,
+            "result_type": result_type,
+        }
+        for idx, cluster in enumerate(clusters)
+    ]
+
+
+def build_map(points_df, recommendations, highlighted_cluster_id=None):
     layers = []
 
-    best_clusters = recommendations.get("best", [])
-    worst_clusters = recommendations.get("worst", [])
+    best_clusters = add_map_rank_metadata(recommendations.get("best", []), "Lower-Concern")
+    worst_clusters = add_map_rank_metadata(recommendations.get("worst", []), "Hotspot")
+    highlighted_cluster = next(
+        (
+            cluster
+            for cluster in best_clusters + worst_clusters
+            if int(cluster["cluster_id"]) == highlighted_cluster_id
+        ),
+        None,
+    )
+    if highlighted_cluster:
+        base_view = pdk.ViewState(
+            latitude=highlighted_cluster["center_lat"],
+            longitude=highlighted_cluster["center_lon"],
+            zoom=12,
+            pitch=50,
+        )
+    else:
+        base_view = pdk.ViewState(latitude=40.7128, longitude=-74.0060, zoom=10, pitch=50)
 
     def with_severity_height(clusters):
         elevated_clusters = []
@@ -139,8 +190,25 @@ def build_map(points_df, recommendations):
             )
         )
 
+    if highlighted_cluster:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                id="highlighted-cluster",
+                data=[highlighted_cluster],
+                get_position="[center_lon, center_lat]",
+                get_radius=900,
+                stroked=True,
+                filled=False,
+                get_line_color="[37, 99, 235, 255]",
+                line_width_min_pixels=5,
+                pickable=False,
+            )
+        )
+
     tooltip = {
         "html": (
+            "<b>{result_type} #{list_rank}</b><br/>"
             "<b>{primary_borough}</b> {primary_zip}<br/>"
             "Normalized severity: {normalized_severity}<br/>"
             "Concern share: {concern_share}<br/>"
@@ -197,6 +265,7 @@ def render_results_page():
     best_clusters = results["best_clusters"]
     worst_clusters = results["worst_clusters"]
     clustering_method = results.get("clustering_method", "seed")
+    highlighted_cluster_id = st.session_state.highlighted_cluster_id
 
     if not best_clusters and not worst_clusters:
         st.warning("No ranked areas were available for this selection.")
@@ -220,20 +289,35 @@ def render_results_page():
         with st.container(height=560):
             if best_clusters:
                 for idx, row in enumerate(best_clusters):
+                    cluster_id = int(row["cluster_id"])
                     area_label = f"{row['primary_borough']} {row['primary_zip']}"
-                    st.markdown(
-                        f"""
-                        **{idx + 1}. {area_label}**  
-                        Normalized severity: `{row['normalized_severity']:.4f}`  
-                        Concern share: `{row['concern_share']:.4f}`  
-                        Reliability factor: `{row['reliability_factor']:.2f}`  
-                        Concern score: `{row['severity_score']:.2f}`  
-                        Baseline score: `{row['baseline_score']:.2f}`  
-                        Matched complaints: `{int(row['complaint_count'])}`  
-                        All complaints: `{int(row['baseline_complaint_count'])}`  
-                        Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
-                        """
-                    )
+                    zillow_url = zillow_area_url(row["primary_borough"], row["primary_zip"])
+                    detail_col, action_col = st.columns([5, 1.35])
+                    with detail_col:
+                        st.markdown(
+                            f"""
+                            **{idx + 1}. [{area_label}]({zillow_url})**  
+                            Normalized severity: `{row['normalized_severity']:.4f}`  
+                            Concern share: `{row['concern_share']:.4f}`  
+                            Reliability factor: `{row['reliability_factor']:.2f}`  
+                            Concern score: `{row['severity_score']:.2f}`  
+                            Baseline score: `{row['baseline_score']:.2f}`  
+                            Matched complaints: `{int(row['complaint_count'])}`  
+                            All complaints: `{int(row['baseline_complaint_count'])}`  
+                            Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`  
+                            [View rentals on Zillow]({zillow_url})
+                            """
+                        )
+                    with action_col:
+                        if highlighted_cluster_id == cluster_id:
+                            st.caption("Highlighted")
+                        st.button(
+                            "Highlight",
+                            key=f"highlight-best-{cluster_id}",
+                            on_click=set_highlighted_cluster,
+                            args=(cluster_id,),
+                            use_container_width=True,
+                        )
                     st.divider()
             else:
                 st.info("No lower-severity clusters were available.")
@@ -243,6 +327,7 @@ def render_results_page():
             build_map(
                 pd.DataFrame(),
                 {"best": best_clusters, "worst": []},
+                highlighted_cluster_id=highlighted_cluster_id,
             ),
             use_container_width=True,
         )
@@ -252,20 +337,33 @@ def render_results_page():
         with st.container(height=560):
             if worst_clusters:
                 for idx, row in enumerate(worst_clusters):
+                    cluster_id = int(row["cluster_id"])
                     area_label = f"{row['primary_borough']} {row['primary_zip']}"
-                    st.markdown(
-                        f"""
-                        **{idx + 1}. {area_label}**  
-                        Normalized severity: `{row['normalized_severity']:.4f}`  
-                        Concern share: `{row['concern_share']:.4f}`  
-                        Reliability factor: `{row['reliability_factor']:.2f}`  
-                        Concern score: `{row['severity_score']:.2f}`  
-                        Baseline score: `{row['baseline_score']:.2f}`  
-                        Matched complaints: `{int(row['complaint_count'])}`  
-                        All complaints: `{int(row['baseline_complaint_count'])}`  
-                        Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
-                        """
-                    )
+                    detail_col, action_col = st.columns([5, 1.35])
+                    with detail_col:
+                        st.markdown(
+                            f"""
+                            **{idx + 1}. {area_label}**  
+                            Normalized severity: `{row['normalized_severity']:.4f}`  
+                            Concern share: `{row['concern_share']:.4f}`  
+                            Reliability factor: `{row['reliability_factor']:.2f}`  
+                            Concern score: `{row['severity_score']:.2f}`  
+                            Baseline score: `{row['baseline_score']:.2f}`  
+                            Matched complaints: `{int(row['complaint_count'])}`  
+                            All complaints: `{int(row['baseline_complaint_count'])}`  
+                            Center: `{row['center_lat']:.4f}, {row['center_lon']:.4f}`
+                            """
+                        )
+                    with action_col:
+                        if highlighted_cluster_id == cluster_id:
+                            st.caption("Highlighted")
+                        st.button(
+                            "Highlight",
+                            key=f"highlight-worst-{cluster_id}",
+                            on_click=set_highlighted_cluster,
+                            args=(cluster_id,),
+                            use_container_width=True,
+                        )
                     st.divider()
             else:
                 st.info("No high-severity clusters were available for this selection.")
@@ -275,6 +373,7 @@ def render_results_page():
             build_map(
                 pd.DataFrame(),
                 {"best": [], "worst": worst_clusters},
+                highlighted_cluster_id=highlighted_cluster_id,
             ),
             use_container_width=True,
         )
@@ -389,6 +488,7 @@ def render_home_page(searcher, clusterer, category_lookup):
                     matched_categories,
                     st.session_state.selected_clustering_method,
                 )
+            st.session_state.highlighted_cluster_id = None
             st.session_state.current_page = "Results"
             st.rerun()
 
@@ -417,6 +517,8 @@ if "semantic_query" not in st.session_state:
     st.session_state.semantic_query = ""
 if "selected_clustering_method" not in st.session_state:
     st.session_state.selected_clustering_method = "seed"
+if "highlighted_cluster_id" not in st.session_state:
+    st.session_state.highlighted_cluster_id = None
 
 category_lookup = {
     category_label(row["Problem"], row["Problem Detail"]): (row["Problem"], row["Problem Detail"])
