@@ -4,7 +4,7 @@ numpy
 
 # Machine Learning & Embeddings
 sentence-transformers
-scikit-learn # can't use directly, should use numpy and or torch for final implementation
+# scikit-learn # can't use directly, should use numpy and or torch for final implementation
 torch
 
 # Web Application (Required for Demo)
