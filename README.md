@@ -55,6 +55,23 @@ lambda = 0.01
 
 where `delta_days` is the number of days between the most recent complaint date in the loaded dataset and the complaint's `Created Date`.
 
+## System Overview
+
+Vibe Check is designed as a modular pipeline that connects semantic understanding of user intent with spatial analysis of complaint data.
+
+The system consists of three main components:
+
+1. **Semantic Matching Layer**  
+   Converts user input into structured complaint categories using transformer-based embeddings and cosine similarity.
+
+2. **Spatial Clustering Layer**  
+   Groups complaint locations using a from-scratch implementation of k-means clustering, producing localized neighborhood regions.
+
+3. **Ranking and Visualization Layer**  
+   Scores each cluster based on concern share and complaint density, and presents the results through an interactive map and ranked lists.
+
+This pipeline allows the system to translate subjective user concerns into objective, data-driven neighborhood recommendations.
+
 ## Method
 
 First, the app maps the user's free-form concern text to relevant 311 complaint categories. It embeds complaint category labels with `nomic-ai/nomic-embed-text-v1.5` and ranks categories by a numpy cosine-similarity calculation against the user's query.
@@ -96,6 +113,9 @@ source venv/bin/activate
 
 # Windows PowerShell
 py -m venv venv
+.\venv\Scripts\Activate.ps1
+
+#Then activate again:
 .\venv\Scripts\Activate.ps1
 
 # Windows Command Prompt
