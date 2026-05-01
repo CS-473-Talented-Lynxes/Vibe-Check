@@ -115,9 +115,6 @@ source venv/bin/activate
 py -m venv venv
 .\venv\Scripts\Activate.ps1
 
-#Then activate again:
-.\venv\Scripts\Activate.ps1
-
 # Windows Command Prompt
 py -m venv venv
 .\venv\Scripts\activate.bat
