@@ -468,7 +468,9 @@ def render_home_page(searcher, clusterer, category_lookup):
             key="selected_clustering_method",
         )
         st.caption(
-            "Seed-based uses sampled complaint locations as fixed centers. K-means updates the centers iteratively until clusters stabilize."
+            "During Clustering, Nearest-center uses sampled complaint locations as fixed centers. K-means updates the centers iteratively until clusters stabilize. "
+
+            "You can try both! (K-means may takes more time to run)"
         )
 
         if st.button(
